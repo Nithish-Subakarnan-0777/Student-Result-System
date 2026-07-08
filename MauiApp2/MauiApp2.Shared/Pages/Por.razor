@@ -1,0 +1,428 @@
+﻿@page "/portal"
+@inject IJSRuntime JSRuntime
+@using Microsoft.Data.SqlClient
+@using System.Data
+
+<div class="app-container">
+    @if (currentScreen == "Home")
+    {
+        <div class="auth-card animate-fade">
+            <h2 class="school-title">XYZ SCHOOL</h2>
+            <p class="school-subtitle">Result Management System</p>
+            
+            <div class="portal-options">
+                <button class="btn btn-student" @onclick='() => SwitchScreen("StudentLogin")'>Student Portal</button>
+                <button class="btn btn-admin" @onclick='() => SwitchScreen("AdminLogin")'>Admin Portal</button>
+            </div>
+        </div>
+    }
+    else if (currentScreen == "AdminLogin")
+    {
+        <div class="auth-card animate-fade">
+            <h3>Admin Authentication</h3>
+            <div class="form-group">
+                <label>Admin ID</label>
+                <input type="text" @bind="inputEmail" placeholder="admin@xyzschool.com" />
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" @bind="inputPassword" />
+            </div>
+            <button class="btn btn-admin w-100" @onclick="VerifyAdminLogin">Login as Admin</button>
+            <button class="btn btn-link" @onclick='() => SwitchScreen("Home")'>← Back to Home</button>
+            @if (!string.IsNullOrEmpty(errorMsg))
+            {
+                <p class="error-text">@errorMsg</p>
+            }
+        </div>
+    }
+    else if (currentScreen == "StudentLogin")
+    {
+        <div class="auth-card animate-fade">
+            <h3>Student Sign In</h3>
+            <div class="form-group">
+                <label>Email Address</label>
+                <input type="email" @bind="inputEmail" placeholder="student@email.com" />
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" @bind="inputPassword" />
+            </div>
+            <button class="btn btn-student w-100" @onclick="VerifyStudentLogin">Sign In</button>
+            
+            <div class="register-prompt">
+                <span>New Student? </span>
+                <a href="javascript:void(0)" @onclick='() => SwitchScreen("Register")'>Click here to register</a>
+            </div>
+            <button class="btn btn-link" @onclick='() => SwitchScreen("Home")'>← Back to Home</button>
+            @if (!string.IsNullOrEmpty(errorMsg))
+            {
+                <p class="error-text">@errorMsg</p>
+            }
+        </div>
+    }
+    else if (currentScreen == "Register")
+    {
+        <div class="auth-card animate-fade">
+            <h3>Student Registration</h3>
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" @bind="regName" />
+            </div>
+            <div class="form-group">
+                <label>Email Address</label>
+                <input type="email" @bind="regEmail" />
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" @bind="regPassword" />
+            </div>
+            <button class="btn btn-success w-100" @onclick="SubmitRegistration">Submit for Approval</button>
+            <button class="btn btn-link" @onclick='() => SwitchScreen("StudentLogin")'>Back to Login</button>
+        </div>
+    }
+    else if (currentScreen == "AdminDashboard")
+    {
+        <div class="dashboard-container animate-fade">
+            <div class="dash-header">
+                <h2>Admin Control Panel (XYZ School)</h2>
+                <button class="btn btn-danger" @onclick='() => SwitchScreen("Home")'>Logout</button>
+            </div>
+
+            <div class="dash-grid">
+                <div class="dash-section">
+                    <h3>Pending Account Approvals</h3>
+                    <div class="scroll-box">
+                        @if (!PendingStudents.Any())
+                        {
+                            <p class="text-muted small">No pending registrations.</p>
+                        }
+                        @foreach (var student in PendingStudents)
+                        {
+                            <div class="list-item">
+                                <div>
+                                    <strong>@student.Name</strong><br />
+                                    <small>@student.Email</small>
+                                </div>
+                                <button class="btn btn-small-success" @onclick="() => ApproveAccount(student)">Approve</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="dash-section">
+                    <h3>Manage Student Marks</h3>
+                    <div class="form-group">
+                        <label>Select Student</label>
+                        <select @onchange="OnStudentSelected">
+                            <option value="">-- Choose Approved Student --</option>
+                            @foreach (var student in ApprovedStudents)
+                            {
+                                <option value="@student.Email">@student.Name (@student.Email)</option>
+                            }
+                        </select>
+                    </div>
+
+                    @if (selectedStudent != null)
+                    {
+                        <div class="marks-input-grid">
+                            <div class="input-row"><label>Tamil:</label><input type="number" @bind="selectedStudent.Tamil" max="100" /></div>
+                            <div class="input-row"><label>English:</label><input type="number" @bind="selectedStudent.English" max="100" /></div>
+                            <div class="input-row"><label>Maths:</label><input type="number" @bind="selectedStudent.Maths" max="100" /></div>
+                            <div class="input-row"><label>Science:</label><input type="number" @bind="selectedStudent.Science" max="100" /></div>
+                            <div class="input-row"><label>Social:</label><input type="number" @bind="selectedStudent.Social" max="100" /></div>
+                        </div>
+                        <div class="total-preview">
+                            <strong>Live Total Marks: @selectedStudent.Total / 500</strong>
+                        </div>
+
+                        <div class="text-center mt-3">
+                            <button class="btn btn-success px-4" @onclick="SaveMarks">💾 Save Changes to Database</button>
+                        </div>
+                        <p class="success-text text-center">Changes saved instantly in memory.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+    else if (currentScreen == "StudentDashboard" && loggedInStudent != null)
+    {
+        <div class="dashboard-container animate-fade">
+            <div class="dash-header">
+                <h2>Student Performance Portal</h2>
+                <div>
+                    <button class="btn btn-success me-2" @onclick="DownloadPdfReport">📥 Download PDF Marksheet</button>
+                    <button class="btn btn-student" @onclick='() => SwitchScreen("Home")'>Logout</button>
+                </div>
+            </div>
+
+            <div class="dash-grid">
+                <div class="dash-section">
+                    <h3>Performance Visualization</h3>
+                    <div class="chart-area">
+                        <div class="bar-chart">
+                            <div class="bar-container"><div class="bar bar-1" style="height: @(loggedInStudent.Tamil)%"></div><span>Tam (@loggedInStudent.Tamil)</span></div>
+                            <div class="bar-container"><div class="bar bar-2" style="height: @(loggedInStudent.English)%"></div><span>Eng (@loggedInStudent.English)</span></div>
+                            <div class="bar-container"><div class="bar bar-3" style="height: @(loggedInStudent.Maths)%"></div><span>Mat (@loggedInStudent.Maths)</span></div>
+                            <div class="bar-container"><div class="bar bar-4" style="height: @(loggedInStudent.Science)%"></div><span>Sci (@loggedInStudent.Science)</span></div>
+                            <div class="bar-container"><div class="bar bar-5" style="height: @(loggedInStudent.Social)%"></div><span>Soc (@loggedInStudent.Social)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dash-section">
+                    <div id="pdfTranscript" class="report-card-print">
+                        <div class="report-header">
+                            <h2>XYZ SCHOOL</h2>
+                            <p>Official Academic Performance Statement</p>
+                        </div>
+                        <div class="report-meta">
+                            <p><strong>Student Name:</strong> @loggedInStudent.Name</p>
+                            <p><strong>Email Identity:</strong> @loggedInStudent.Email</p>
+                        </div>
+                        <table class="report-table">
+                            <thead>
+                                <tr><th>Subject Academic Core</th><th>Marks Secured</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>Tamil</td><td>@loggedInStudent.Tamil</td></tr>
+                                <tr><td>English</td><td>@loggedInStudent.English</td></tr>
+                                <tr><td>Mathematics</td><td>@loggedInStudent.Maths</td></tr>
+                                <tr><td>Science</td><td>@loggedInStudent.Science</td></tr>
+                                <tr><td>Social Science</td><td>@loggedInStudent.Social</td></tr>
+                                <tr class="total-row"><td>Aggregate Total Marks</td><td>@loggedInStudent.Total / 500</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@using Microsoft.Data.SqlClient
+@using System.Data
+
+@code {
+    public class StudentAccount
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public bool IsApproved { get; set; } = false;
+        
+        public int Tamil { get; set; }
+        public int English { get; set; }
+        public int Maths { get; set; }
+        public int Science { get; set; }
+        public int Social { get; set; }
+        public int Total => Tamil + English + Maths + Science + Social;
+    }
+
+    // Points directly to the local instance you just created
+    private string connectionString = "Server=.\\SQLEXPRESS;Database=XYZSchoolDB;Trusted_Connection=True;TrustServerCertificate=True;";
+
+    private string currentScreen = "Home";
+    private string inputEmail = "";
+    private string inputPassword = "";
+    private string errorMsg = "";
+
+    private string regName = "";
+    private string regEmail = "";
+    private string regPassword = "";
+
+    private StudentAccount? selectedStudent;
+    private StudentAccount? loggedInStudent;
+    
+    // UI tracking lists fed by the database
+    private List<StudentAccount> PendingStudents = new();
+    private List<StudentAccount> ApprovedStudents = new();
+
+    private void SwitchScreen(string screenName)
+    {
+        currentScreen = screenName;
+        errorMsg = "";
+        inputEmail = "";
+        inputPassword = "";
+        
+        if (screenName == "AdminDashboard")
+        {
+            LoadAdminDashboardData();
+        }
+    }
+
+    private void VerifyAdminLogin()
+    {
+        if (inputEmail == "admin@xyzschool.com" && inputPassword == "Admin@XYZ2026")
+        {
+            SwitchScreen("AdminDashboard");
+        }
+        else
+        {
+            errorMsg = "Invalid Admin ID or Password.";
+        }
+    }
+
+    private void VerifyStudentLogin()
+    {
+        try
+        {
+            using (SqlConnection conn = new SqlConnection(connectionString))
+            {
+                conn.Open();
+                string query = "SELECT * FROM Students WHERE Email = @Email AND Password = @Password";
+                using (SqlCommand cmd = new SqlCommand(query, conn))
+                {
+                    cmd.Parameters.AddWithValue("@Email", inputEmail.Trim());
+                    cmd.Parameters.AddWithValue("@Password", inputPassword);
+                    
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            bool isApproved = Convert.ToBoolean(reader["IsApproved"]);
+                            if (!isApproved)
+                            {
+                                errorMsg = "Account pending Administrator approval.";
+                                return;
+                            }
+
+                            loggedInStudent = new StudentAccount
+                            {
+                                Name = reader["Name"].ToString() ?? "",
+                                Email = reader["Email"].ToString() ?? "",
+                                Tamil = Convert.ToInt32(reader["Tamil"]),
+                                English = Convert.ToInt32(reader["English"]),
+                                Maths = Convert.ToInt32(reader["Maths"]),
+                                Science = Convert.ToInt32(reader["Science"]),
+                                Social = Convert.ToInt32(reader["Social"])
+                            };
+                            SwitchScreen("StudentDashboard");
+                        }
+                        else
+                        {
+                            errorMsg = "Invalid email or password match.";
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMsg = $"Database Error: {ex.Message}";
+        }
+    }
+
+    private void SubmitRegistration()
+    {
+        if (string.IsNullOrWhiteSpace(regEmail) || string.IsNullOrWhiteSpace(regPassword)) return;
+
+        try
+        {
+            using (SqlConnection conn = new SqlConnection(connectionString))
+            {
+                conn.Open();
+                string query = "INSERT INTO Students (Name, Email, Password, IsApproved) VALUES (@Name, @Email, @Password, 0)";
+                using (SqlCommand cmd = new SqlCommand(query, conn))
+                {
+                    cmd.Parameters.AddWithValue("@Name", regName);
+                    cmd.Parameters.AddWithValue("@Email", regEmail.Trim());
+                    cmd.Parameters.AddWithValue("@Password", regPassword);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            SwitchScreen("StudentLogin");
+            errorMsg = "Registration successful! Awaiting admin approval.";
+        }
+        catch (Exception)
+        {
+            errorMsg = "Registration failed. Email might already exist.";
+        }
+    }
+
+    private void LoadAdminDashboardData()
+    {
+        PendingStudents.Clear();
+        ApprovedStudents.Clear();
+        selectedStudent = null;
+
+        using (SqlConnection conn = new SqlConnection(connectionString))
+        {
+            conn.Open();
+            string query = "SELECT * FROM Students";
+            using (SqlCommand cmd = new SqlCommand(query, conn))
+            using (SqlDataReader reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    var student = new StudentAccount
+                    {
+                        Name = reader["Name"].ToString() ?? "",
+                        Email = reader["Email"].ToString() ?? "",
+                        IsApproved = Convert.ToBoolean(reader["IsApproved"]),
+                        Tamil = Convert.ToInt32(reader["Tamil"]),
+                        English = Convert.ToInt32(reader["English"]),
+                        Maths = Convert.ToInt32(reader["Maths"]),
+                        Science = Convert.ToInt32(reader["Science"]),
+                        Social = Convert.ToInt32(reader["Social"])
+                    };
+
+                    if (student.IsApproved) ApprovedStudents.Add(student);
+                    else PendingStudents.Add(student);
+                }
+            }
+        }
+    }
+
+    private void ApproveAccount(StudentAccount student)
+    {
+        using (SqlConnection conn = new SqlConnection(connectionString))
+        {
+            conn.Open();
+            string query = "UPDATE Students SET IsApproved = 1 WHERE Email = @Email";
+            using (SqlCommand cmd = new SqlCommand(query, conn))
+            {
+                cmd.Parameters.AddWithValue("@Email", student.Email);
+                cmd.ExecuteNonQuery();
+            }
+        }
+        LoadAdminDashboardData();
+    }
+
+    private void OnStudentSelected(ChangeEventArgs e)
+    {
+        var email = e.Value?.ToString();
+        selectedStudent = ApprovedStudents.FirstOrDefault(s => s.Email == email);
+    }
+
+    private void SaveMarks()
+    {
+        if (selectedStudent == null) return;
+
+        using (SqlConnection conn = new SqlConnection(connectionString))
+        {
+            conn.Open();
+            string query = @"UPDATE Students 
+                             SET Tamil = @Tam, English = @Eng, Maths = @Mat, Science = @Sci, Social = @Soc 
+                             WHERE Email = @Email";
+            using (SqlCommand cmd = new SqlCommand(query, conn))
+            {
+                cmd.Parameters.AddWithValue("@Tam", selectedStudent.Tamil);
+                cmd.Parameters.AddWithValue("@Eng", selectedStudent.English);
+                cmd.Parameters.AddWithValue("@Mat", selectedStudent.Maths);
+                cmd.Parameters.AddWithValue("@Sci", selectedStudent.Science);
+                cmd.Parameters.AddWithValue("@Soc", selectedStudent.Social);
+                cmd.Parameters.AddWithValue("@Email", selectedStudent.Email);
+                cmd.ExecuteNonQuery();
+            }
+        }
+    }
+
+    private async Task DownloadPdfReport()
+    {
+        if (loggedInStudent != null)
+        {
+            await JSRuntime.InvokeVoidAsync("generateReportCardPdf", "pdfTranscript", $"{loggedInStudent.Name}_Marksheet.pdf");
+        }
+    }
+}

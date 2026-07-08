@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>MauiApp2</title>
+    <base href="/" />
+    <link rel="stylesheet" href="_content/MauiApp2.Shared/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="_content/MauiApp2.Shared/app.css" />
+    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="MauiApp2.styles.css" />
+    <link rel="icon" href="data:,">
+</head>
+
+<body>
+
+    <div class="status-bar-safe-area"></div>
+
+    <div id="app">Loading...</div>
+
+    <script src="_framework/blazor.webview.js" autostart="false"></script>
+    <script src="_framework/blazor.webview.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <script>
+        window.generateReportCardPdf = function (elementId, filename) {
+            const element = document.getElementById(elementId);
+            if (!element) {
+                console.error("Print layout element not found: " + elementId);
+                return;
+            }
+
+            const options = {
+                margin: 0.5,
+                filename: filename,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+            };
+
+            // Process the DOM target markup directly into a PDF download stream
+            html2pdf().set(options).from(element).save();
+        };
+    </script>
+
+</body>
+
+</html>
